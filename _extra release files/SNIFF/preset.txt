@@ -1,0 +1,33 @@
+/*
+	How to use the preset file to convert json?
+	
+	you can put comments with //, /* or */.
+	i recommend you press TAB before writing comment blocks.
+	
+	First line is for the song name, it's used to make the file name. (Default is input file name)
+
+	Second line is for BPM. You can leave it empty if a FLP file was selected.
+
+	Third line is for needsVoices, it can be Y or N. (Default is N)
+
+	Forth line is for player1. (Default is "bf")
+
+	Fifth line is for player2. (Default is "dad")
+
+	Sixth line is for gfVersion. (Default is "gf")
+
+	Seventh line is for stage. (Default is "stage")
+
+	Eighth line is for speed. (Default is bpm value divided by 50)
+	The scroll speed of a song of any difficulty level is set by this value.
+
+	Example:
+		bopeebo // song name
+		102.0 // bpm
+		true // needsVoices
+		bf // player1
+		dad // player2
+		gf // gfVersion
+		stage // stage
+		1.0 // speed
+*/
