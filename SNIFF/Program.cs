@@ -715,6 +715,7 @@ namespace SNIFF
                 writer.WritePropertyName("notes");
                 writer.WriteStartArray();
 
+                List<JObject> pendingSections = new List<JObject>();
                 bool mustHitSection = true;
                 var lastBPMChangeTime = new { u = (uint)0, f = (double)0, s = (int)-1 };
                 int bpmListIdx = 1;
@@ -834,14 +835,17 @@ namespace SNIFF
 
                     while (sectionCnt * Globals.ppqn * 4 <= daNote.Time)
                     {
-                        if (curSection != null && curSection.Count > 0 && lastSection != null)
+                        if (curSection != null && curSection.Count > 0)
                         {
-                            FlushSectionToWriter(lastSection);
-                            lastSection = null;
-                            curSection = null;
+                            foreach (JObject loop in pendingSections)
+                            {
+                                FlushSectionToWriter(loop);
+                            }
+                            pendingSections.Clear();
                         }
 
                         lastSection = DefaultSection(addLength);
+                        pendingSections.Add(lastSection);
                         sectionCnt++;
                         lastSection["mustHitSection"] = mustHitSection;
                         curSection = (JArray)lastSection["sectionNotes"];
@@ -871,17 +875,14 @@ namespace SNIFF
                     {
                         case (uint)MIDINotes.BF_CAM:
                         case (uint)MIDINotes.EN_CAM:
-                            if (lastSection != null)
+                            lastSection["sectionNotes"] = curSection;
+                            mustHitSection = (uint)MIDINotes.BF_CAM == daNote.Pitch;
+                            if (lastSection["mustHitSection"].ToObject<bool>() != mustHitSection && curSection.Count > 0)
                             {
-                                lastSection["sectionNotes"] = curSection;
-                                mustHitSection = (uint)MIDINotes.BF_CAM == daNote.Pitch;
-                                if (lastSection["mustHitSection"].ToObject<bool>() != mustHitSection && curSection.Count > 0)
-                                {
-                                    FlipNoteActor(lastSection);
-                                }
-                                lastSection["mustHitSection"] = mustHitSection;
-                                curSection = (JArray)lastSection["sectionNotes"];
+                                FlipNoteActor(lastSection);
                             }
+                            lastSection["mustHitSection"] = mustHitSection;
+                            curSection = (JArray)lastSection["sectionNotes"];
                             break;
 
                         case (uint)MIDINotes.BPM_CH:
