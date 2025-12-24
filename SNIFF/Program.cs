@@ -490,6 +490,9 @@ namespace SNIFF
                                     speed = Globals.bpm / 50;
                                 }
                                 break;
+                            case 8: // song credits
+                                if (Globals.songCredit == "") Globals.songCredit = line ?? "";
+                                break;
                             default:
                                 Console.WriteLine("Unknown preset line: " + line);
                                 break;
@@ -508,6 +511,7 @@ namespace SNIFF
                     song.Add("gfVersion", Globals.gfVersion);
                     song.Add("stage", Globals.stage);
                     song.Add("speed", speed);
+                    song.Add("songCredit", Globals.songCredit);
                 }
             }
 
@@ -1076,13 +1080,6 @@ namespace SNIFF
         [STAThread]
         static void Main(string[] args)
         {
-            /* test formatting json ... thanks on stack overflow
-			string str = JsonHelper.FormatJson(@"{""name"":""andy"",""age"":27,""birth"":""1997/06/21"",""score"":[{""S"":1,""A"":3,""B"":6,""C"":2,""D"":0}]}");
-			Console.Write(str);
-
-			return;
-			*/
-
             // Enable ANSI Escape Sequences
             var stdout = Console.OpenStandardOutput();
             var con = new StreamWriter(stdout);

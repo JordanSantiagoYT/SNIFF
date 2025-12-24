@@ -21,6 +21,9 @@
 	Eighth line is for speed. (Default is bpm value divided by 50)
 	The scroll speed of a song of any difficulty level is set by this value.
 
+	Ninth line is for song credits.
+	(NOTE: Only works on JS Engine!)
+
 	Example:
 		bopeebo // song name
 		102.0 // bpm
@@ -30,4 +33,5 @@
 		gf // gfVersion
 		stage // stage
 		1.0 // speed
+		MoldyGH // song credits
 */
