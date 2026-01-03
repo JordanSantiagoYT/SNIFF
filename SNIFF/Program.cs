@@ -52,6 +52,7 @@ namespace SNIFF
         public static int passPreset = 0; // -1 = preset manual input, 0 = undecided, 1 = preset file
         public static string songCredit = "";
         public static bool trimSus = false; //false = don't trim, true = trim (use for any engine other than h-slice)
+        public static int roundDecimal = 6; //amount of decimals to round to!
     }
 
 	public enum MIDINotes
@@ -487,7 +488,7 @@ namespace SNIFF
                                 }
                                 else
                                 {
-                                    speed = Globals.bpm / 50;
+                                    speed = (Globals.bpm * Globals.bpmMult) / 50;
                                 }
                                 break;
                             case 8: // song credits
@@ -737,7 +738,7 @@ namespace SNIFF
                 Stopwatch swatch = new Stopwatch();
                 swatch.Start();
 
-                int roundDecimal = 3;
+                int roundDecimal = Globals.roundDecimal;
                 bool isDone = false;
 
                 Task.Run(() =>
@@ -1109,6 +1110,14 @@ namespace SNIFF
 
             Console.Write("trim sustain note lengths? (y/n, default n. Used to save filesize, but only compatible with H-Slice)");
             Globals.trimSus = (Console.ReadLine().ToLower().Trim() == "y");
+
+            Console.Write("to how many decimal places should strum times be rounded? (number from 0-13, default 6. higher values make strumTime more precise, but increase filesize by a bit): ");
+            string decimalPlaces = Console.ReadLine();
+            if (!string.IsNullOrWhiteSpace(decimalPlaces))
+                Globals.roundDecimal = (int)Math.Min(13, float.Parse(decimalPlaces));
+                if (Globals.roundDecimal < 0) Globals.roundDecimal = 6;
+            else
+                Globals.roundDecimal = 6;
 
             OpenFileDialog fileBrowser = new OpenFileDialog
             {
