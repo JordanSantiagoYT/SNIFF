@@ -456,10 +456,10 @@ namespace SNIFF
                                 if (Globals.bpm == 0)
                                 {
                                     Console.Write("BPM: ");
-                                    Globals.bpm = float.Parse(line);
+                                    Globals.bpm = float.Parse(line) * Globals.bpmMult;
                                 }
                                 else if (Globals.bpmList.Count > 0)
-                                    Globals.bpm = Globals.bpmList[0];
+                                    Globals.bpm = Globals.bpmList[0] * Globals.bpmMult;
                                 break;
                             case 2: // needsVoices
                                 if (Globals.needsVoices == 0) Globals.needsVoices = line.ToLower().Trim() == "n" ? -1 : 1;
