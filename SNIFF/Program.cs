@@ -456,10 +456,10 @@ namespace SNIFF
                                 if (Globals.bpm == 0)
                                 {
                                     Console.Write("BPM: ");
-                                    Globals.bpm = float.Parse(line) * Globals.bpmMult;
+                                    Globals.bpm = float.Parse(line);
                                 }
                                 else if (Globals.bpmList.Count > 0)
-                                    Globals.bpm = Globals.bpmList[0] * Globals.bpmMult;
+                                    Globals.bpm = Globals.bpmList[0];
                                 break;
                             case 2: // needsVoices
                                 if (Globals.needsVoices == 0) Globals.needsVoices = line.ToLower().Trim() == "n" ? -1 : 1;
@@ -505,7 +505,7 @@ namespace SNIFF
                     song = new JObject {
                         { "song", Globals.name }
                     };
-                    song.Add("bpm", Globals.bpm);
+                    song.Add("bpm", Globals.bpm * Globals.bpmMult);
                     song.Add("needsVoices", Globals.needsVoices > 0);
                     song.Add("player1", Globals.player1);
                     song.Add("player2", Globals.player2);
