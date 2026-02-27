@@ -1113,9 +1113,10 @@ namespace SNIFF
 
             Console.Write("to how many decimal places should strum times be rounded? (number from 0-13, default 6. higher values make strumTime more precise, but increase filesize by a bit): ");
             string decimalPlaces = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(decimalPlaces))
+            if (!string.IsNullOrWhiteSpace(decimalPlaces)) {
                 Globals.roundDecimal = (int)Math.Min(13, float.Parse(decimalPlaces));
                 if (Globals.roundDecimal < 0) Globals.roundDecimal = 6;
+            }
             else
                 Globals.roundDecimal = 6;
 
