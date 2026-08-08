@@ -67,8 +67,9 @@ namespace SNIFF
 		
 		BPM_CH = 56,
 		ALT_AN = 57,
-		
-		EN_L = 60,
+        ALT_AN_BF = 58,
+
+        EN_L = 60,
 		EN_D = 61,
 		EN_U = 62,
 		EN_R = 63
@@ -109,6 +110,8 @@ namespace SNIFF
 			Globals.stage = "";
             Globals.songCredit = "";
         }
+
+        static bool altAnimBF = false;
 
 		public static FLNote MakeNote(double strumTime, int noteData, float sustainLength, bool mustHitSection, float bpm)
 		{
@@ -320,7 +323,7 @@ namespace SNIFF
             sw.Stop();
             isDone = true;
 
-            Console.WriteLine("\x1b[0GInteger Cnt: " + typeCnt[0] + " Double Cnt: " + typeCnt[1] + " Total Notes Cnt: " + notes.Count);
+            Console.WriteLine($"\x1b[0GInteger Cnt: {typeCnt[0]:N0} Double Cnt: {typeCnt[1]:N0} Total Notes Cnt: {notes.Count:N0}");
 
             byte[] nBytes = FLNotesToBytes(notes);
             // the array length lets goo
@@ -393,8 +396,8 @@ namespace SNIFF
             notes = flArray.ToList(); // convert back to List<FLNote>
             flArray = null; // free memory
 
-            Console.WriteLine(notes.Count + " notes processed.");
-			return notes;
+            Console.WriteLine($"{notes.Count:N0} notes processed.");
+            return notes;
 		}
 
         static string FLtoJSON(List<FLNote> notes, string fileName, bool addLength, string diff, bool doFormat)
@@ -640,9 +643,9 @@ namespace SNIFF
                         string newbpm = Console.ReadLine();
                         if (!string.IsNullOrWhiteSpace(newbpm))
                         {
-                            float daBPM = float.Parse(newbpm) * Globals.bpmMult;
+                            float daBPM = float.Parse(newbpm);
                             Globals.bpm = daBPM;
-                            song["bpm"] = daBPM;
+                            song["bpm"] = daBPM * Globals.bpmMult;
                             Globals.bpmList.Add(daBPM);
                         }
                         Console.WriteLine("Selected BPM: " + Globals.bpm + "\nGreat! After you select the save directory keep an eye out, we'll be asking you for the new BPMs.");
@@ -745,7 +748,7 @@ namespace SNIFF
                 {
                     while (!isDone)
                     {
-                        Console.Write($"\x1b[0GNotes: {progress} / {totalNotes} ({progress / (double)totalNotes:P3}) Section: {sectionCnt}");
+                        Console.Write($"\x1b[0GNotes: {progress:N0} / {totalNotes:N0} ({progress / (double)totalNotes:P3}) Section: {sectionCnt}");
                         Task.Delay(20).Wait();
                     }
                 });
@@ -854,6 +857,7 @@ namespace SNIFF
                         sectionCnt++;
                         lastSection["mustHitSection"] = mustHitSection;
                         curSection = (JArray)lastSection["sectionNotes"];
+                        altAnimBF = false;
                     }
 
                     // compute strumTime
@@ -918,11 +922,11 @@ namespace SNIFF
                             {
                                 if (lastSection.ContainsKey("changeBPM"))
                                 {
-                                    lastSection["bpm"] = Globals.bpm;
+                                    lastSection["bpm"] = Globals.bpm * Globals.bpmMult;
                                 }
                                 else
                                 {
-                                    lastSection.Add("bpm", Globals.bpm);
+                                    lastSection.Add("bpm", Globals.bpm * Globals.bpmMult);
                                     lastSection.Add("changeBPM", true);
                                 }
                             }
@@ -932,6 +936,9 @@ namespace SNIFF
 
                         case (uint)MIDINotes.ALT_AN:
                             lastSection["altAnim"] = true;
+                            break;
+                        case (uint)MIDINotes.ALT_AN_BF:
+                            altAnimBF = true;
                             break;
 
                         case (uint)MIDINotes.BF_L:
@@ -954,6 +961,9 @@ namespace SNIFF
                             if ((notes[0].Flags & 0x10) == 0x10)
                                 n.Add(true);
 
+                            if (altAnimBF && daNote.Pitch <= (uint)MIDINotes.BF_R)
+                                n.Add("Alt Animation");
+
                             if (curSection == null)
                             {
                                 lastSection = DefaultSection(addLength);
@@ -972,17 +982,16 @@ namespace SNIFF
                     ++progress;
                 }
 
-                if (curSection != null && curSection.Count > 0 && lastSection != null)
+                foreach (JObject sec in pendingSections)
                 {
-                    FlushSectionToWriter(lastSection);
-                    lastSection = null;
-                    curSection = null;
+                    FlushSectionToWriter(sec);
                 }
+                pendingSections.Clear();
 
                 swatch.Stop();
                 isDone = true;
-                Console.WriteLine($"\x1b[0G{progress} / {totalNotes} Done ({progress / (double)totalNotes:P3}) Current Section: {sectionCnt}");
-                Console.WriteLine("Done! Took " + swatch.ElapsedMilliseconds + " ms to process " + totalNotes + " notes.");
+                Console.WriteLine($"\x1b[0G{progress:N0} / {totalNotes:N0} Done ({progress / (double)totalNotes:P3}) Current Section: {sectionCnt}");
+                Console.WriteLine("Done! Took " + swatch.ElapsedMilliseconds + $" ms to process {totalNotes:N0} notes.");
 
                 writer.WriteEndArray(); // notes
                 writer.WriteEndObject(); // song
@@ -1011,70 +1020,85 @@ namespace SNIFF
 		{
 			List<FLNote> notes = new List<FLNote>();
 
-			// if it has a project tempo it's an .flp
-			if (flFile.FindFirstEvent(Event.EventIDs.D_PROJ_TMP) != null)
-			{
-				CollectFLPGlobals(flFile);
-				bool triedPat = false;
+            // if it has a project tempo it's an .flp
+            if (flFile.FindFirstEvent(Event.EventIDs.D_PROJ_TMP) != null)
+            {
+                CollectFLPGlobals(flFile);
+                bool triedPat = false;
 
-				// get the first fpc channel and get just the notes from that,
-				// if it dont exist just get them from whatever the first channel is
-				ushort generator = 0;
-				for (int i = 0; i < flFile.eventList.Count; i++)
-				{
-					if (flFile.eventList[i].ID == (byte)Event.EventIDs.A_PLUG_NAME &&
-						((byte[])flFile.eventList[i].Value).SequenceEqual(new byte[] { 0x46, 0x50, 0x43, 0x00 }))
-					{
-						generator = (ushort)flFile.FindPrevEvent(Event.EventIDs.W_GEN_CH_NO, i).Value;
-						i = flFile.eventList.Count;
-						Console.WriteLine("FPC channel found at " + generator);
-					}
-				}
+                // get the first fpc channel and get just the notes from that,
+                // if it dont exist just get them from whatever the first channel is
+                ushort generator = 0;
+                for (int i = 0; i < flFile.eventList.Count; i++)
+                {
+                    if (flFile.eventList[i].ID == (byte)Event.EventIDs.A_PLUG_NAME &&
+                        ((byte[])flFile.eventList[i].Value).SequenceEqual(new byte[] { 0x46, 0x50, 0x43, 0x00 }))
+                    {
+                        generator = (ushort)flFile.FindPrevEvent(Event.EventIDs.W_GEN_CH_NO, i).Value;
+                        i = flFile.eventList.Count;
+                        Console.WriteLine("FPC channel found at " + generator);
+                    }
+                }
 
-				// scrub pattern for notes from selected channel
-				while (notes.Count == 0)
-				{
-					byte[] noteData = flFile.FindNoteDataByPatternNum(pattern);
-					if (noteData != null)
-					{
-						notes = BytesToFLNotes(noteData);
-						for (int i = 0; i < notes.Count; i++)
-						{
-							// remove any notes not from selected channel
-							if (notes[i].ChannelNo != generator)
-								notes.RemoveAt(i--);
-						}
-						if (notes.Count == 0 && !triedPat)
-						{
-							pattern = 0;
-							triedPat = true;
-							if (strict)
-								return null;
-						}
-						pattern++;
-					}
-					else
-					{
-						Console.WriteLine("No notes found.");
-						//Console.ReadLine();
-						return null;
-					}
-				}
-				Console.WriteLine("Notes grabbed from pattern " + (pattern - 1));
-			}
-			else
-			{
-				// if .fsc file (pattern number is ignored because there's only one pattern with id 0)
-				ArrayEvent noteData = (ArrayEvent)flFile.FindFirstEvent(Event.EventIDs.A_NOTE_DATA);
-				if (noteData != null)
-					notes = BytesToFLNotes((byte[])noteData.Value);
-				else
-				{
-					Console.WriteLine("No notes found.");
-					return null;
-				}
-			}
-			return notes;
+                // scrub pattern for notes from selected channel
+                while (notes.Count == 0)
+                {
+                    byte[] noteData = flFile.FindNoteDataByPatternNum(pattern);
+                    if (noteData != null && noteData.Length > 0)
+                    {
+                        notes = BytesToFLNotes(noteData);
+                        for (int i = 0; i < notes.Count; i++)
+                        {
+                            // remove any notes not from selected channel
+                            if (notes[i].ChannelNo != generator)
+                                notes.RemoveAt(i--);
+                        }
+                        if (notes.Count == 0 && !triedPat)
+                        {
+                            pattern = 0;
+                            triedPat = true;
+                            if (strict)
+                                return null;
+                        }
+                        pattern++;
+                    }
+                    else
+                    {
+                        Console.WriteLine("No notes found.");
+                        //Console.ReadLine();
+                        return null;
+                    }
+                }
+                Console.WriteLine("Notes grabbed from pattern " + (pattern - 1));
+            }
+            else
+            {
+                // if .fsc file (pattern number is ignored because there's only one pattern with id 0)
+                ArrayEvent noteData = (ArrayEvent)flFile.FindFirstEvent(Event.EventIDs.A_NOTE_DATA);
+                if (noteData != null)
+                    notes = BytesToFLNotes((byte[])noteData.Value);
+                else
+                {
+                    Console.WriteLine("No notes found.");
+                    return null;
+                }
+            }
+            notes = notes.OrderBy(n => n.Time).ThenBy(n =>
+            {
+                switch (n.Pitch)
+                {
+                    case (uint)MIDINotes.ALT_AN_BF:
+                    case (uint)MIDINotes.ALT_AN:
+                    case (uint)MIDINotes.BPM_CH:
+                    case (uint)MIDINotes.BF_CAM:
+                    case (uint)MIDINotes.EN_CAM:
+                        return 0;
+                    default:
+                        return 1;
+                }
+            })
+            .ToList();
+            return notes;
 		}
 
         //yes the main function
@@ -1113,7 +1137,8 @@ namespace SNIFF
 
             Console.Write("to how many decimal places should strum times be rounded? (number from 0-13, default 6. higher values make strumTime more precise, but increase filesize by a bit): ");
             string decimalPlaces = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(decimalPlaces)) {
+            if (!string.IsNullOrWhiteSpace(decimalPlaces))
+            {
                 Globals.roundDecimal = (int)Math.Min(13, float.Parse(decimalPlaces));
                 if (Globals.roundDecimal < 0) Globals.roundDecimal = 6;
             }
