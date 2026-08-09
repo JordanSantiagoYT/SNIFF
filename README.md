@@ -30,6 +30,7 @@ In the Rust port, more optimizations/differences are included to make it faster 
 * Instead of having to name your patterns `easy`, `normal` and `hard` specifically, you can specifically pick which pattern is converted. (You can use Split Difficulties mode if you prefer the old behavior.)
 * The new Merge and Batch modes allow you to convert multiple FLPs at a time, or into one file, provided that they all use the same exact pattern name.
 * Pitch mapping can be changed or re-assigned, to make custom FPC channels that utilize different layouts of note pitches.
+* You can set a custom threshold for splitting charts, for those of you who are insane enough.
 * Supports command-line arguments, functioning just like the GUI version. (though, using the GUI is more recommended)
 
 NOTES:
