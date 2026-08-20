@@ -33,172 +33,173 @@ using System.Windows.Forms;
 
 namespace SNIFF
 {
-	static class Globals
-	{
-		public const int VersionNumber = 7;
-		public const int NoteSize = 24;
-		public static ushort ppqn = 96;
+    static class Globals
+    {
+        public const int VersionNumber = 7;
+        public const int NoteSize = 24;
+        public static ushort ppqn = 96;
         public static float bpmMult = 1;
         public static float susSteps = 4;
         public static string name = "";
-		public static float bpm = 0;
-		public static List<float> bpmList = new List<float>();
+        public static float bpm = 0;
+        public static List<float> bpmList = new List<float>();
         public static int needsVoices = 0; //-1 = false, 0 = undecided, 1 = true
         public static string player1 = "";
-		public static string player2 = "";
-		public static string gfVersion = "";
-		public static string stage = "";
-		public static string arrowSkin = "";
+        public static string player2 = "";
+        public static string gfVersion = "";
+        public static string stage = "";
+        public static string arrowSkin = "";
         public static int passPreset = 0; // -1 = preset manual input, 0 = undecided, 1 = preset file
         public static string songCredit = "";
         public static bool trimSus = false; //false = don't trim, true = trim (use for any engine other than h-slice)
         public static int roundDecimal = 6; //amount of decimals to round to!
+        public static bool splitMetadata = false; //false = combined file (original), true = separate chart/metadata files
     }
 
-	public enum MIDINotes
-	{
-		BF_L = 48,
-		BF_D = 49,
-		BF_U = 50,
-		BF_R = 51,
-		
-		BF_CAM = 53,
-		EN_CAM = 54,
-		
-		BPM_CH = 56,
-		ALT_AN = 57,
+    public enum MIDINotes
+    {
+        BF_L = 48,
+        BF_D = 49,
+        BF_U = 50,
+        BF_R = 51,
+
+        BF_CAM = 53,
+        EN_CAM = 54,
+
+        BPM_CH = 56,
+        ALT_AN = 57,
         ALT_AN_BF = 58,
 
         EN_L = 60,
-		EN_D = 61,
-		EN_U = 62,
-		EN_R = 63
-	}
+        EN_D = 61,
+        EN_U = 62,
+        EN_R = 63
+    }
 
-	public enum FNFNotes : int
-	{
-		F_L = 0,
-		F_D = 1,
-		F_U = 2,
-		F_R = 3,
+    public enum FNFNotes : int
+    {
+        F_L = 0,
+        F_D = 1,
+        F_U = 2,
+        F_R = 3,
 
-		O_L = 4,
-		O_D = 5,
-		O_U = 6,
-		O_R = 7,
+        O_L = 4,
+        O_D = 5,
+        O_U = 6,
+        O_R = 7,
 
-		BF_CAM = 8,
-		EN_CAM = 9,
-		ALT_AN = 10,
-		BPM_CH = 11
-	}
-	
+        BF_CAM = 8,
+        EN_CAM = 9,
+        ALT_AN = 10,
+        BPM_CH = 11
+    }
 
-	class Program
-	{
-		static void ResetGlobals()
-		{
-			Globals.ppqn = 96;
-			Globals.name = "";
-			Globals.bpm = 0;
+
+    class Program
+    {
+        static void ResetGlobals()
+        {
+            Globals.ppqn = 96;
+            Globals.name = "";
+            Globals.bpm = 0;
             Globals.bpmMult = 1;
             Globals.susSteps = 4;
             Globals.needsVoices = 0;
-			Globals.player1 = "";
-			Globals.player2 = "";
-			Globals.gfVersion = "";
-			Globals.stage = "";
+            Globals.player1 = "";
+            Globals.player2 = "";
+            Globals.gfVersion = "";
+            Globals.stage = "";
             Globals.songCredit = "";
         }
 
         static bool altAnimBF = false;
 
-		public static FLNote MakeNote(double strumTime, int noteData, float sustainLength, bool mustHitSection, float bpm)
-		{
-			byte velo = 0x64;
-			uint noteTime = (uint)Math.Round(strumTime / MIDITimeToMillis(bpm));
-			uint duration = (uint)Globals.ppqn / 4;
-			uint midiPitch = 0;
+        public static FLNote MakeNote(double strumTime, int noteData, float sustainLength, bool mustHitSection, float bpm)
+        {
+            byte velo = 0x64;
+            uint noteTime = (uint)Math.Round(strumTime / MIDITimeToMillis(bpm));
+            uint duration = (uint)Globals.ppqn / 4;
+            uint midiPitch = 0;
 
-			if (sustainLength > 0)
-			{
-				duration = (uint)(sustainLength / MIDITimeToMillis(bpm));
-				if (duration < (uint)Globals.ppqn)
-					velo = 0x3F;
-			}
-			if (noteData >= (int)FNFNotes.BF_CAM)
-				duration = (uint)(Globals.ppqn * 4);
-			
-			switch (noteData)
-			{
-				case (int)FNFNotes.F_L:
-				case (int)FNFNotes.F_D:
-				case (int)FNFNotes.F_U:
-				case (int)FNFNotes.F_R:
-					midiPitch = (uint)(MIDINotes.BF_L + noteData + (mustHitSection ? 0 : 12));
-					break;
-				case (int)FNFNotes.O_L:
-				case (int)FNFNotes.O_D:
-				case (int)FNFNotes.O_U:
-				case (int)FNFNotes.O_R:
-					midiPitch = (uint)(MIDINotes.BF_L + noteData - 4 + (mustHitSection ? 12 : 0));
-					break;
-				case (int)FNFNotes.BF_CAM:
-					midiPitch = (uint)MIDINotes.BF_CAM;
-					break;
-				case (int)FNFNotes.EN_CAM:
-					midiPitch = (uint)MIDINotes.EN_CAM;
-					break;
-				case (int)FNFNotes.ALT_AN:
-					midiPitch = (uint)MIDINotes.ALT_AN;
-					break;
-				case (int)FNFNotes.BPM_CH:
-					midiPitch = (uint)MIDINotes.BPM_CH;
-					break;
-				default:
-					break;
-			}
+            if (sustainLength > 0)
+            {
+                duration = (uint)(sustainLength / MIDITimeToMillis(bpm));
+                if (duration < (uint)Globals.ppqn)
+                    velo = 0x3F;
+            }
+            if (noteData >= (int)FNFNotes.BF_CAM)
+                duration = (uint)(Globals.ppqn * 4);
 
-			return new FLNote
-			{
-				Time = noteTime,
-				TBD = 0x4000,
-				ChannelNo = 0x0000,
-				Duration = duration,
-				Pitch = midiPitch,
-				FinePitch = 120,
-				Release = 0x40,
-				Flags = 0x00,
-				Panning = 0x40,
-				Velocity = velo,
-				ModX = 0x80,
-				ModY = 0x80
-			};
-		}
+            switch (noteData)
+            {
+                case (int)FNFNotes.F_L:
+                case (int)FNFNotes.F_D:
+                case (int)FNFNotes.F_U:
+                case (int)FNFNotes.F_R:
+                    midiPitch = (uint)(MIDINotes.BF_L + noteData + (mustHitSection ? 0 : 12));
+                    break;
+                case (int)FNFNotes.O_L:
+                case (int)FNFNotes.O_D:
+                case (int)FNFNotes.O_U:
+                case (int)FNFNotes.O_R:
+                    midiPitch = (uint)(MIDINotes.BF_L + noteData - 4 + (mustHitSection ? 12 : 0));
+                    break;
+                case (int)FNFNotes.BF_CAM:
+                    midiPitch = (uint)MIDINotes.BF_CAM;
+                    break;
+                case (int)FNFNotes.EN_CAM:
+                    midiPitch = (uint)MIDINotes.EN_CAM;
+                    break;
+                case (int)FNFNotes.ALT_AN:
+                    midiPitch = (uint)MIDINotes.ALT_AN;
+                    break;
+                case (int)FNFNotes.BPM_CH:
+                    midiPitch = (uint)MIDINotes.BPM_CH;
+                    break;
+                default:
+                    break;
+            }
 
-		static FLNote DefaultNote(uint time, uint duration, uint pitch)
-		{
-			return new FLNote
-			{
-				Time = time,
-				TBD = 0x4000,
-				ChannelNo = 0x0000,
-				Duration = duration,
-				Pitch = pitch,
-				FinePitch = 120,
-				Release = 0x40,
-				Flags = 0x00,
-				Panning = 0x40,
-				Velocity = 0x64,
-				ModX = 0x80,
-				ModY = 0x80
-			};
-		}
+            return new FLNote
+            {
+                Time = noteTime,
+                TBD = 0x4000,
+                ChannelNo = 0x0000,
+                Duration = duration,
+                Pitch = midiPitch,
+                FinePitch = 120,
+                Release = 0x40,
+                Flags = 0x00,
+                Panning = 0x40,
+                Velocity = velo,
+                ModX = 0x80,
+                ModY = 0x80
+            };
+        }
 
-		static FLNote DefaultNote()
-		{
-			return DefaultNote(0, (uint)Globals.ppqn / 4, 60);
-		}
+        static FLNote DefaultNote(uint time, uint duration, uint pitch)
+        {
+            return new FLNote
+            {
+                Time = time,
+                TBD = 0x4000,
+                ChannelNo = 0x0000,
+                Duration = duration,
+                Pitch = pitch,
+                FinePitch = 120,
+                Release = 0x40,
+                Flags = 0x00,
+                Panning = 0x40,
+                Velocity = 0x64,
+                ModX = 0x80,
+                ModY = 0x80
+            };
+        }
+
+        static FLNote DefaultNote()
+        {
+            return DefaultNote(0, (uint)Globals.ppqn / 4, 60);
+        }
 
         static JObject DefaultSection(bool length)
         {
@@ -213,56 +214,62 @@ namespace SNIFF
         }
 
         static byte[] FLNotesToBytes(List<FLNote> notes)
-		{
-			List<byte> bytes = new List<byte>();
-			foreach (FLNote note in notes)
-			{
-				bytes.AddRange(BitConverter.GetBytes(note.Time));
-				bytes.AddRange(BitConverter.GetBytes(note.TBD));
-				bytes.AddRange(BitConverter.GetBytes(note.ChannelNo));
-				bytes.AddRange(BitConverter.GetBytes(note.Duration));
-				bytes.AddRange(BitConverter.GetBytes(note.Pitch));
-				bytes.AddRange(BitConverter.GetBytes(note.FinePitch));
-				bytes.Add(note.Release);
-				bytes.Add(note.Flags);
-				bytes.Add(note.Panning);
-				bytes.Add(note.Velocity);
-				bytes.Add(note.ModX);
-				bytes.Add(note.ModY);
-			}
-			return bytes.ToArray();
-		}
+        {
+            List<byte> bytes = new List<byte>();
+            foreach (FLNote note in notes)
+            {
+                bytes.AddRange(BitConverter.GetBytes(note.Time));
+                bytes.AddRange(BitConverter.GetBytes(note.TBD));
+                bytes.AddRange(BitConverter.GetBytes(note.ChannelNo));
+                bytes.AddRange(BitConverter.GetBytes(note.Duration));
+                bytes.AddRange(BitConverter.GetBytes(note.Pitch));
+                bytes.AddRange(BitConverter.GetBytes(note.FinePitch));
+                bytes.Add(note.Release);
+                bytes.Add(note.Flags);
+                bytes.Add(note.Panning);
+                bytes.Add(note.Velocity);
+                bytes.Add(note.ModX);
+                bytes.Add(note.ModY);
+            }
+            return bytes.ToArray();
+        }
 
-		static List<byte> JSONtoFL(JObject o)
-		{
-			Console.Write("How is set value of PPQ? (Default is 96, Max is 65535, 0 will set in 96) ");
-			try {
-				Globals.ppqn = ushort.Parse(Console.ReadLine());
-            } catch (FormatException) {
-				Globals.ppqn = 96;
-			}
-			if(Globals.ppqn == 0) Globals.ppqn = 96;
+        static List<byte> JSONtoFL(JObject o)
+        {
+            Console.Write("How is set value of PPQ? (Default is 96, Max is 65535, 0 will set in 96) ");
+            try
+            {
+                Globals.ppqn = ushort.Parse(Console.ReadLine());
+            }
+            catch (FormatException)
+            {
+                Globals.ppqn = 96;
+            }
+            if (Globals.ppqn == 0) Globals.ppqn = 96;
 
-			List<byte> file = new List<byte>()
-			{//full FLhd plus FLdt bytes
-				0x46, 0x4C, 0x68, 0x64, 0x06, 0x00, 0x00, 0x00, 0x10, 0x00, 0x05, 0x00, 
-				(byte)(Globals.ppqn % 256), (byte)(Globals.ppqn / 256), 0x46, 0x4C, 0x64, 0x74
-			}; //then append int size of data (below) and then data itself
-			List<byte> data = new List<byte>()
-			{
-				0xC7, 0x07, 0x31, 0x31, 0x2E, 0x31, 0x2E, 0x30, 0x00, 0x1C, 0x03, 0x41, 0x00, 0x00, 0xE0
-			}; //then append size of notes and then notes themselves
-			List<FLNote> notes = new List<FLNote>();
+            List<byte> file = new List<byte>()
+            {//full FLhd plus FLdt bytes
+				0x46, 0x4C, 0x68, 0x64, 0x06, 0x00, 0x00, 0x00, 0x10, 0x00, 0x05, 0x00,
+                (byte)(Globals.ppqn % 256), (byte)(Globals.ppqn / 256), 0x46, 0x4C, 0x64, 0x74
+            }; //then append int size of data (below) and then data itself
+            List<byte> data = new List<byte>()
+            {
+                0xC7, 0x07, 0x31, 0x31, 0x2E, 0x31, 0x2E, 0x30, 0x00, 0x1C, 0x03, 0x41, 0x00, 0x00, 0xE0
+            }; //then append size of notes and then notes themselves
+            List<FLNote> notes = new List<FLNote>();
 
-			Console.WriteLine("\nYour BPM is "+o["song"]["bpm"]);
-			Console.WriteLine("\nYour speed is " + o["song"]["speed"]);
-			float bpm = (float)o["song"]["bpm"];
-			bool mustHitSection = true;
-			var lastBPMChangeTime = new {
-				u = (uint)0, f = (double)0, s = (int)0
-			};
+            Console.WriteLine("\nYour BPM is " + o["song"]["bpm"]);
+            Console.WriteLine("\nYour speed is " + o["song"]["speed"]);
+            float bpm = (float)o["song"]["bpm"];
+            bool mustHitSection = true;
+            var lastBPMChangeTime = new
+            {
+                u = (uint)0,
+                f = (double)0,
+                s = (int)0
+            };
 
-			Stopwatch sw = new Stopwatch();
+            Stopwatch sw = new Stopwatch();
             sw.Start(); int[] typeCnt = new int[2];
             int length = o["song"]["notes"].Count();
 
@@ -345,52 +352,52 @@ namespace SNIFF
         }
 
         static void FlipNoteActor(JObject section)
-		{
-			for (int i = 0; i < ((JArray)section["sectionNotes"]).Count; i++)
-			{
-				int s = (int)section["sectionNotes"][i][1];
-				if (s > 3)
-					s -= 4;
-				else
-					s += 4;
-				section["sectionNotes"][i][1] = s;
-			}
-		}
-		static double MIDITimeToMillis(float bpm)
-		{
-			return (1000.0 * 60.0 / bpm / Globals.ppqn);
-		}
+        {
+            for (int i = 0; i < ((JArray)section["sectionNotes"]).Count; i++)
+            {
+                int s = (int)section["sectionNotes"][i][1];
+                if (s > 3)
+                    s -= 4;
+                else
+                    s += 4;
+                section["sectionNotes"][i][1] = s;
+            }
+        }
+        static double MIDITimeToMillis(float bpm)
+        {
+            return (1000.0 * 60.0 / bpm / Globals.ppqn);
+        }
 
-		/* 
+        /* 
 		 * This makes a note data event's data into a
 		 * list of FLNotes
 		 */
-		static List<FLNote> BytesToFLNotes(byte[] b)
-		{
-			List<FLNote> notes = new List<FLNote>();
-			int i = 0;
-			while (i < b.Length)
-			{
-				//notes loop
-				FLNote n = new FLNote
-				{
-					Time = BitConverter.ToUInt32(b, i),
-					TBD = BitConverter.ToUInt16(b, i + 4),
-					ChannelNo = BitConverter.ToUInt16(b, i + 6),
-					Duration = BitConverter.ToUInt32(b, i + 8),
-					Pitch = BitConverter.ToUInt32(b, i + 12),
-					FinePitch = BitConverter.ToUInt16(b, i + 16),
-					Release = b[i + 18],
-					Flags = b[i + 19],
-					Panning = b[i + 20],
-					Velocity = b[i + 21],
-					ModX = b[i + 22],
-					ModY = b[i + 23]
-				};
-				notes.Add(n);
-                
-				i += Globals.NoteSize;
-			}
+        static List<FLNote> BytesToFLNotes(byte[] b)
+        {
+            List<FLNote> notes = new List<FLNote>();
+            int i = 0;
+            while (i < b.Length)
+            {
+                //notes loop
+                FLNote n = new FLNote
+                {
+                    Time = BitConverter.ToUInt32(b, i),
+                    TBD = BitConverter.ToUInt16(b, i + 4),
+                    ChannelNo = BitConverter.ToUInt16(b, i + 6),
+                    Duration = BitConverter.ToUInt32(b, i + 8),
+                    Pitch = BitConverter.ToUInt32(b, i + 12),
+                    FinePitch = BitConverter.ToUInt16(b, i + 16),
+                    Release = b[i + 18],
+                    Flags = b[i + 19],
+                    Panning = b[i + 20],
+                    Velocity = b[i + 21],
+                    ModX = b[i + 22],
+                    ModY = b[i + 23]
+                };
+                notes.Add(n);
+
+                i += Globals.NoteSize;
+            }
 
             FLNote[] flArray = notes.OrderBy(n => n.Time).ThenBy(n => n.Duration).ToArray(); // sort by time & duration
             notes = flArray.ToList(); // convert back to List<FLNote>
@@ -398,7 +405,7 @@ namespace SNIFF
 
             Console.WriteLine($"{notes.Count:N0} notes processed.");
             return notes;
-		}
+        }
 
         static string FLtoJSON(List<FLNote> notes, string fileName, bool addLength, string diff, bool doFormat)
         {
@@ -663,8 +670,17 @@ namespace SNIFF
                 Filter = "JSON File (*.json)|*.json|All files (*.*)|*.*",
                 FileName = Path.GetFileNameWithoutExtension(fileName),
             };
-            if (diff != "normal")
+            if (Globals.splitMetadata)
+            {
+                if (diff != "normal")
+                    saveBrowser.FileName += "-chart-" + diff;
+                else
+                    saveBrowser.FileName += "-chart";
+            }
+            else if (diff != "normal")
+            {
                 saveBrowser.FileName += "-" + diff;
+            }
             saveBrowser.FileName += ".json";
 
             if (saveBrowser.ShowDialog() != DialogResult.OK)
@@ -1002,23 +1018,64 @@ namespace SNIFF
                 writer.WriteEndObject();
                 writer.Flush();
             }
+
+            if (Globals.splitMetadata)
+            {
+                string metadataPath = Path.Combine(
+                    Path.GetDirectoryName(outPath),
+                    Path.GetFileNameWithoutExtension(fileName) +
+                    (diff != "normal" ? "-metadata-" + diff : "-metadata") +
+                    ".json"
+                );
+
+                JObject combined = JObject.Parse(File.ReadAllText(outPath));
+                JObject songData = (JObject)combined["song"];
+
+                JObject metadata = new JObject
+                {
+                    { "song", songData["song"] },
+                    { "bpm", songData["bpm"] },
+                    { "speed", songData["speed"] },
+                    { "needsVoices", songData["needsVoices"] },
+                    { "player1", songData["player1"] },
+                    { "player2", songData["player2"] },
+                    { "gfVersion", songData["gfVersion"] },
+                    { "stage", songData["stage"] }
+                };
+
+                JObject chart = new JObject
+                {
+                    { "notes", songData["notes"] }
+                };
+
+                if (combined["generatedBy"] != null)
+                    chart.Add("generatedBy", combined["generatedBy"]);
+
+                Formatting splitFormatting = doFormat ? Formatting.Indented : Formatting.None;
+                File.WriteAllText(outPath, new JArray(chart).ToString(splitFormatting));
+                File.WriteAllText(metadataPath, new JArray(metadata).ToString(splitFormatting));
+
+                Console.WriteLine("Chart written to: " + outPath);
+                Console.WriteLine("Metadata written to: " + metadataPath);
+            }
+
             return outPath;
         }
 
         static void CollectFLPGlobals(FLFile flFile)
-		{
-			Globals.ppqn = flFile.ppqn;
-			DwordEvent tempoEvent = (DwordEvent)flFile.FindFirstEvent(Event.EventIDs.D_PROJ_TMP);
-			if (tempoEvent != null)
-			{
-				Globals.bpm = (uint)tempoEvent.Value / 1000.0f;
-				Console.WriteLine("BPM found: " + Globals.bpm);
-			}
-		}
+        {
+            Globals.ppqn = flFile.ppqn;
+            DwordEvent tempoEvent = (DwordEvent)flFile.FindFirstEvent(Event.EventIDs.D_PROJ_TMP);
+            if (tempoEvent != null)
+            {
+                Globals.bpm = (uint)tempoEvent.Value / 1000.0f;
+                Console.WriteLine("BPM found: " + Globals.bpm);
+            }
+        }
 
-		static List<FLNote> CollectFLNotes(FLFile flFile, ushort pattern, bool strict = false)
-		{
-			List<FLNote> notes = new List<FLNote>();
+        static List<FLNote> CollectFLNotes(FLFile flFile, ushort pattern, bool strict = false)
+        {
+            List<FLNote> notes = new List<FLNote>();
 
             // if it has a project tempo it's an .flp
             if (flFile.FindFirstEvent(Event.EventIDs.D_PROJ_TMP) != null)
@@ -1099,7 +1156,7 @@ namespace SNIFF
             })
             .ToList();
             return notes;
-		}
+        }
 
         //yes the main function
         [STAThread]
@@ -1134,6 +1191,9 @@ namespace SNIFF
 
             Console.Write("trim sustain note lengths? (y/n, default n. Used to save filesize, but only compatible with H-Slice)");
             Globals.trimSus = (Console.ReadLine().ToLower().Trim() == "y");
+
+            Console.Write("write song metadata to a separate file instead of embedding it in the chart? (y/N, default N): ");
+            Globals.splitMetadata = (Console.ReadLine().ToLower().Trim() == "y");
 
             Console.Write("to how many decimal places should strum times be rounded? (number from 0-13, default 6. higher values make strumTime more precise, but increase filesize by a bit): ");
             string decimalPlaces = Console.ReadLine();
@@ -1236,7 +1296,7 @@ namespace SNIFF
                             {
                                 if (diffs)
                                     Console.WriteLine("Current difficulty: " + diffnames[i]);
-                                string file = FLtoJSON(CollectFLNotes(flFile, patterns[i], diffs), fileName, addLength, diffnames[i], doFormat);                                
+                                string file = FLtoJSON(CollectFLNotes(flFile, patterns[i], diffs), fileName, addLength, diffnames[i], doFormat);
                             }
                         }
                         ResetGlobals();

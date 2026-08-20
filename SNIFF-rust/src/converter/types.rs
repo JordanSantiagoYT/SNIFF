@@ -116,6 +116,10 @@ pub struct ConversionPreset {
     pub sustain_threshold_steps: f64,
     pub trim_sustains: bool,
     pub pretty_json: bool,
+    /// When true, write chart notes and song metadata to two separate files
+    /// (`{stem}-chart.{ext}` / `{stem}-metadata.{ext}`) instead of the
+    /// original combined single-file format. Default: false (combined).
+    pub split_metadata: bool,
     pub alt_marker_pitch: u8,
     pub mapping: Vec<PitchMapping>,
     /// BPM values consumed in order when PITCH_BPM_CHANGE (pitch 56) markers
@@ -163,6 +167,7 @@ impl Default for ConversionPreset {
             sustain_threshold_steps: 4.0,
             trim_sustains: false,
             pretty_json: false,
+            split_metadata: false,
             alt_marker_pitch: 58,
             mapping,
             bpm_changes: Vec::new(),

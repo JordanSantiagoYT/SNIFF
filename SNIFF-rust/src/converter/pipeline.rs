@@ -24,8 +24,8 @@ use rayon::prelude::*;
 use super::{
     chart::{
         build_pitch_lookup, resolve_must_hit_sections, resolve_section_timing,
-        round_num, ChartNote, ChartRoot, Section, SectionStream,
-        SongData, BPM_SPEED_PRECISION, PARALLEL_RENDER_CHUNK,
+        round_num, ChartNote, ChartOnlyRoot, ChartRoot, Section, SectionStream,
+        SongData, SongMetadata, BPM_SPEED_PRECISION, PARALLEL_RENDER_CHUNK,
     },
     flp::{is_fsc, parse_fsc, parse_flp, PITCH_ALT_ANIM, PITCH_BPM_CHANGE, PITCH_MUST_HIT_FALSE, PITCH_MUST_HIT_TRUE},
     inspect::{find_difficulty_patterns, inspect},
@@ -104,7 +104,7 @@ pub fn convert_file(
             let song = song_name_from(preset, primary_input);
             let mut stats = convert_chart(
                 project.notes, project.ppq, preset, &song,
-                output, split_threshold, &mut progress, flp_bpm,
+                output, "", split_threshold, &mut progress, flp_bpm,
             )?;
             stats.time = start_time.elapsed().as_micros() as f64 / 1000.0;
             Ok(stats)
@@ -199,7 +199,7 @@ pub fn convert_file(
             let song = song_name_from(preset, primary_input);
             let mut stats = convert_chart(
                 combined_notes, ppq, preset, &song,
-                output, split_threshold, &mut progress, flp_bpm,
+                output, "", split_threshold, &mut progress, flp_bpm,
             )?;
             stats.time = start_time.elapsed().as_micros() as f64 / 1000.0;
             if !skipped.is_empty() {
@@ -233,14 +233,15 @@ pub fn convert_file(
                 .and_then(|s| s.to_str())
                 .unwrap_or("json");
             let base_dir = output.parent().unwrap_or(Path::new("."));
+            // Base path passed to convert_chart; it inserts "-chart"/"-metadata"
+            // before the difficulty suffix below, e.g. "{stem}.{ext}" + "-hard"
+            // -> "{stem}-chart-hard.{ext}" / "{stem}-metadata-hard.{ext}".
+            let base_output = base_dir.join(format!("{stem}.{ext}"));
 
-            let easy_name   = format!("{stem}-easy.{ext}");
-            let normal_name = format!("{stem}.{ext}");
-            let hard_name   = format!("{stem}-hard.{ext}");
             let difficulties: &[(Option<u16>, &str)] = &[
-                (slots.easy,   &easy_name),
-                (slots.normal, &normal_name),
-                (slots.hard,   &hard_name),
+                (slots.easy,   "-easy"),
+                (slots.normal, ""),
+                (slots.hard,   "-hard"),
             ];
 
             let mut total_notes    = 0u64;
@@ -249,7 +250,7 @@ pub fn convert_file(
             let mut first_ppq      = 0u16;
             let mut first_flp_bpm  = None;
 
-            for (pattern_id_opt, filename) in difficulties {
+            for (pattern_id_opt, difficulty_suffix) in difficulties {
                 let Some(pattern_id) = pattern_id_opt else { continue };
                 progress(Progress::Stage("Parsing notes"));
                 let project = parse_flp(&bytes, Some(*pattern_id), &mut progress)?;
@@ -263,11 +264,10 @@ pub fn convert_file(
                 if project.ppq == 0 {
                     bail!("FLP has PPQ 0");
                 }
-                let out_path = base_dir.join(filename);
                 let song = song_name_from(preset, primary_input);
                 let stats = convert_chart(
                     project.notes, project.ppq, preset, &song,
-                    &out_path, split_threshold, &mut progress, flp_bpm,
+                    &base_output, difficulty_suffix, split_threshold, &mut progress, flp_bpm,
                 )?;
                 total_notes    += stats.notes.replace(',', "").parse::<u64>().unwrap_or(0);
                 total_sections += stats.sections.replace(',', "").parse::<u64>().unwrap_or(0);
@@ -321,7 +321,7 @@ pub fn convert_file(
                 let song = song_name_from(preset, path);
                 let stats = convert_chart(
                     project.notes, project.ppq, preset, &song,
-                    &out_path, split_threshold, &mut progress, flp_bpm,
+                    &out_path, "", split_threshold, &mut progress, flp_bpm,
                 )?;
                 total_notes    += stats.notes.replace(',', "").parse::<u64>().unwrap_or(0);
                 total_sections += stats.sections.replace(',', "").parse::<u64>().unwrap_or(0);
@@ -347,15 +347,27 @@ pub fn convert_file(
 // ---------------------------------------------------------------------------
 
 /// Groups `notes` into sections, resolves timing and mustHitSection state,
-/// sorts, and writes one or more output JSON files. All mode-specific
-/// note-collection logic lives in `convert_file`; this function only cares
-/// about the already-assembled note vec.
+/// sorts, and writes output JSON for one or more splits (more than one only
+/// when `split_threshold` forces a split). All mode-specific note-collection
+/// logic lives in `convert_file`; this function only cares about the
+/// already-assembled note vec.
+///
+/// `output` is a base path (`{stem}.{ext}`) that file names are derived
+/// from, plus a `_2`, `_3`, ... suffix for additional split files, and
+/// `difficulty_suffix` (typically `""`, `"-easy"`, or `"-hard"`).
+///
+/// When `preset.split_metadata` is false (default), each split writes one
+/// combined file: `{stem}{difficulty_suffix}.{ext}`, the original format
+/// with notes nested under song metadata. When true, each split writes two
+/// files instead: `{stem}-chart{difficulty_suffix}.{ext}` (notes only) and
+/// `{stem}-metadata{difficulty_suffix}.{ext}` (song metadata only).
 fn convert_chart(
     notes: Vec<super::flp::FlNote>,
     ppq: u16,
     preset: &ConversionPreset,
     song: &str,
     output: &Path,
+    difficulty_suffix: &str,
     split_threshold: Option<u64>,
     progress: &mut dyn FnMut(Progress),
     flp_bpm: f64,
@@ -533,22 +545,25 @@ fn convert_chart(
     };
 
     // -----------------------------------------------------------------
-    // Write loop
+    // Write loop. Combined mode writes one file per split (original
+    // format); split-metadata mode writes a chart file + a metadata
+    // file per split (see `ConversionPreset::split_metadata`).
     let sections_cell = RefCell::new(sections);
     progress(Progress::Stage("Writing chart JSON"));
     let progress_dyn: &mut dyn FnMut(Progress) = progress;
     let mut total_notes_written = 0usize;
 
+    let base_stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("chart");
+    let base_ext  = output.extension().and_then(|s| s.to_str()).unwrap_or("json");
+
     for (file_index, (file_start, file_section_count)) in file_ranges.iter().copied().enumerate() {
-        let file_path = if file_index == 0 {
-            output.to_path_buf()
+        let split_suffix = if file_index == 0 {
+            String::new()
         } else {
-            let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("chart");
-            let ext  = output.extension().and_then(|s| s.to_str()).unwrap_or("json");
-            output.with_file_name(format!("{}_{}.{}", stem, file_index + 1, ext))
+            format!("_{}", file_index + 1)
         };
 
-        // Per-split SongData.bpm reflects the active BPM at that split point.
+        // Per-split bpm reflects the active tempo at that split point.
         let file_bpm = sections_cell.borrow()[file_start].chart_bpm;
 
         let file_notes_to_write: usize = {
@@ -559,50 +574,75 @@ fn convert_chart(
                 .sum()
         };
 
-        let root = ChartRoot {
-            song: SongData {
-                song,
-                bpm:         round_num(file_bpm, BPM_SPEED_PRECISION),
-                speed:       round_num(speed, BPM_SPEED_PRECISION),
-                player1:     &preset.player1,
-                player2:     &preset.player2,
-                gf_version:  &preset.gf_version,
-                stage:       &preset.stage,
-                song_creator: &preset.song_creator,
-                needs_voices: preset.needs_voices,
-                valid_score: true,
-                notes: SectionStream {
-                    sections:      &sections_cell,
-                    start:         file_start,
-                    section_count: file_section_count,
-                    trim_sustains: preset.trim_sustains,
-                    notes_to_write: file_notes_to_write,
-                    progress:      RefCell::new(progress_dyn),
-                    note_count:    Cell::new(0),
-                    precision,
-                    parallel: !preset.pretty_json,
-                },
-            },
+        let stream = SectionStream {
+            sections:      &sections_cell,
+            start:         file_start,
+            section_count: file_section_count,
+            trim_sustains: preset.trim_sustains,
+            notes_to_write: file_notes_to_write,
+            progress:      RefCell::new(progress_dyn),
+            note_count:    Cell::new(0),
+            precision,
+            parallel: !preset.pretty_json,
         };
 
-        let file = fs::File::create(&file_path)
-            .with_context(|| format!("creating {}", file_path.display()))?;
-        let mut writer = BufWriter::with_capacity(16 * 1024 * 1024, file);
-        if preset.pretty_json {
-            serde_json::to_writer_pretty(&mut writer, &root)?;
-        } else {
-            serde_json::to_writer(&mut writer, &root)?;
-        }
-        writer.flush().with_context(|| format!("writing {}", file_path.display()))?;
+        if preset.split_metadata {
+            // Two files: "{stem}-chart{suffix}.{ext}" and "{stem}-metadata{suffix}.{ext}".
+            let chart_path = output.with_file_name(format!(
+                "{base_stem}-chart{difficulty_suffix}{split_suffix}.{base_ext}"
+            ));
+            let metadata_path = output.with_file_name(format!(
+                "{base_stem}-metadata{difficulty_suffix}{split_suffix}.{base_ext}"
+            ));
 
-        total_notes_written += root.song.notes.note_count.get();
+            let chart_root = ChartOnlyRoot { notes: stream };
+            total_notes_written += write_chart_file(&chart_path, &chart_root, preset.pretty_json)?;
+
+            let metadata = SongMetadata {
+                song,
+                bpm:          round_num(file_bpm, BPM_SPEED_PRECISION),
+                speed:        round_num(speed, BPM_SPEED_PRECISION),
+                needs_voices: preset.needs_voices,
+                player1:      &preset.player1,
+                player2:      &preset.player2,
+                gf_version:   &preset.gf_version,
+                song_creator: &preset.song_creator,
+                stage:        &preset.stage,
+                valid_score:  true,
+            };
+            write_metadata_file(&metadata_path, &metadata, preset.pretty_json)?;
+        } else {
+            // Original combined format: one file, notes nested under song metadata.
+            let file_path = output.with_file_name(format!(
+                "{base_stem}{difficulty_suffix}{split_suffix}.{base_ext}"
+            ));
+
+            let root = ChartRoot {
+                song: SongData {
+                    song,
+                    bpm:          round_num(file_bpm, BPM_SPEED_PRECISION),
+                    speed:        round_num(speed, BPM_SPEED_PRECISION),
+                    needs_voices: preset.needs_voices,
+                    player1:      &preset.player1,
+                    player2:      &preset.player2,
+                    gf_version:   &preset.gf_version,
+                    song_creator: &preset.song_creator,
+                    stage:        &preset.stage,
+                    valid_score:  true,
+                    notes: stream,
+                },
+            };
+            total_notes_written += write_combined_file(&file_path, &root, preset.pretty_json)?;
+        }
     }
 
     Ok(Stats {
         notes:    total_notes_written.to_formatted_string(&Locale::en),
         sections: section_count.to_formatted_string(&Locale::en),
         time:     0.0, // set by convert_file for the whole operation
-        files:    file_count,
+        // Split mode writes a chart file *and* a metadata file per split;
+        // combined mode writes just one file per split.
+        files:    if preset.split_metadata { file_count * 2 } else { file_count },
         warnings,
     })
 }
@@ -610,6 +650,52 @@ fn convert_chart(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Writes the chart-only JSON (`[ { "notes": [...] } ]`) to `path`.
+/// Returns the note count written, read back from the drained `SectionStream`.
+fn write_chart_file(path: &Path, root: &ChartOnlyRoot<'_>, pretty: bool) -> Result<usize> {
+    let file = fs::File::create(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    let mut writer = BufWriter::with_capacity(16 * 1024 * 1024, file);
+    if pretty {
+        serde_json::to_writer_pretty(&mut writer, &[root])?;
+    } else {
+        serde_json::to_writer(&mut writer, &[root])?;
+    }
+    writer.flush().with_context(|| format!("writing {}", path.display()))?;
+    Ok(root.notes.note_count.get())
+}
+
+/// Writes the original combined-format JSON (`{ "song": { ...metadata,
+/// "notes": [...] } }`, not array-wrapped) to `path`. Returns the note
+/// count written, read back from the drained `SectionStream`.
+fn write_combined_file(path: &Path, root: &ChartRoot<'_, '_>, pretty: bool) -> Result<usize> {
+    let file = fs::File::create(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    let mut writer = BufWriter::with_capacity(16 * 1024 * 1024, file);
+    if pretty {
+        serde_json::to_writer_pretty(&mut writer, root)?;
+    } else {
+        serde_json::to_writer(&mut writer, root)?;
+    }
+    writer.flush().with_context(|| format!("writing {}", path.display()))?;
+    Ok(root.song.notes.note_count.get())
+}
+
+/// Writes the song-metadata JSON (`[ { "song": ..., "bpm": ..., ... } ]`)
+/// to `path`. Small and non-streaming, so a plain `BufWriter` is enough.
+fn write_metadata_file(path: &Path, metadata: &SongMetadata<'_>, pretty: bool) -> Result<()> {
+    let file = fs::File::create(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    let mut writer = BufWriter::new(file);
+    if pretty {
+        serde_json::to_writer_pretty(&mut writer, &[metadata])?;
+    } else {
+        serde_json::to_writer(&mut writer, &[metadata])?;
+    }
+    writer.flush().with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
 
 /// Returns the song name for the chart JSON: the preset's `song_name` if
 /// non-empty, otherwise the input file's stem.
