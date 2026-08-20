@@ -100,6 +100,12 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub prettyprint: bool,
 
+    /// Write chart notes and song metadata to two separate files
+    /// (`{stem}-chart.{ext}` / `{stem}-metadata.{ext}`) instead of one
+    /// combined file. Default: false.
+    #[arg(long, default_value_t = false)]
+    pub split_metadata: bool,
+
     /// Split output into multiple files when note count exceeds this threshold.
     /// Omit to write everything to a single file.
     #[arg(long, value_name = "NOTES")]
@@ -183,6 +189,7 @@ fn run_to_chart(cli: &Cli) -> anyhow::Result<()> {
     if cli.voices     { preset.needs_voices  = true; }
     if cli.trimsus    { preset.trim_sustains = true; }
     if cli.prettyprint { preset.pretty_json  = true; }
+    if cli.split_metadata { preset.split_metadata = true; }
 
     // Resolve pipeline mode.
     let mode = resolve_mode(cli)?;

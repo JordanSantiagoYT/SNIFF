@@ -729,6 +729,7 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.preset.trim_sustains, "Trim sustain lengths to whole steps");
                         ui.checkbox(&mut self.preset.pretty_json, "Pretty Print JSON");
+                        ui.checkbox(&mut self.preset.split_metadata, "Write metadata to a separate file");
                     });
 
                     ui.horizontal(|ui| {

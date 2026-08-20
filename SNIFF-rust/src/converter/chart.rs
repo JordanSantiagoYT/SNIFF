@@ -6,7 +6,7 @@
 //   - resolve_must_hit_sections (carry mustHitSection state forward)
 //   - resolve_section_timing (per-section BPM/ms computation)
 //   - build_note_json (shared note → NoteJson conversion)
-//   - JSON output types: ChartRoot, SongData, SectionJson, NoteJson
+//   - JSON output types: ChartRoot, SongData, ChartOnlyRoot, SectionJson, NoteJson, SongMetadata
 //   - SectionStream (streaming Serialize impl that drains sections on-the-fly)
 //   - render_section (parallel fast-path: section → RawValue)
 //   - round_num helper
@@ -272,14 +272,18 @@ pub(crate) fn build_note_json(
 // ---------------------------------------------------------------------------
 // JSON output types
 // ---------------------------------------------------------------------------
-// ChartRoot / SongData / SectionJson / NoteJson derive Serialize normally.
-// The `notes` field of SongData is a SectionStream, which implements Serialize
-// by hand and drains the section list element-by-element as serde_json asks
-// for the next array element — so each section is built, written to the
-// BufWriter, and dropped before the next one starts. Peak memory is just the
-// grouped notes (unavoidable) plus one section at a time, not a full second
-// copy of the chart as JSON.
+// ChartRoot / SongData / ChartOnlyRoot / SongMetadata / SectionJson / NoteJson
+// derive Serialize normally. The streamed `notes` field (on either SongData
+// or ChartOnlyRoot) is a SectionStream, which implements Serialize by hand
+// and drains the section list element-by-element as serde_json asks for the
+// next array element — so each section is built, written to the BufWriter,
+// and dropped before the next one starts. Peak memory is just the grouped
+// notes (unavoidable) plus one section at a time, not a full second copy of
+// the chart as JSON.
 
+/// Combined chart file root: notes + song metadata together in one file,
+/// the original single-file format (`{ "song": { ...metadata, "notes": [...] } }`).
+/// Used when `ConversionPreset::split_metadata` is false.
 #[derive(Serialize)]
 pub(crate) struct ChartRoot<'a, 'p> {
     pub song: SongData<'a, 'p>,
@@ -302,6 +306,83 @@ pub(crate) struct SongData<'a, 'p> {
     #[serde(rename = "validScore")]
     pub valid_score: bool,
     pub notes: SectionStream<'p>,
+}
+
+/// Chart file root when metadata is exported separately (see `SongMetadata`
+/// below): just the notes, wrapped in the same single-element-array shape
+/// as the metadata file so both sides of the split look consistent.
+/// Used when `ConversionPreset::split_metadata` is true.
+#[derive(Serialize)]
+pub(crate) struct ChartOnlyRoot<'p> {
+    pub notes: SectionStream<'p>,
+}
+
+// A standalone metadata thingamabob that also reads from what values you put in!
+// This is for exporting the chart itself into a different file while 
+// having the metadata also separate.
+//
+// SongMetadata is written as a bare single-element array — `&[metadata]` —
+// not wrapped in a `{ "metadata": ... }` object, to match the shape below.
+
+// Expected shape:
+/**
+ * bopeebo-chart-hard.json 
+   [
+    {
+      "notes":
+      ...
+    }
+   ]
+ *
+ * bopeebo-metadata-hard.json 
+   [
+    {
+      "song": "bopeebo",
+      "bpm": 100,
+      "speed": 1,
+      "needsVoices": true,
+      "player1": "bf",
+      "player2": "dad",
+      "gfVersion": "gf",
+      "stage": "stage"
+    }
+   ]
+ *
+ */
+#[derive(Serialize)]
+pub(crate) struct SongMetadata<'a> {
+    // Song, eg. "bopeebo"
+    pub song: &'a str,
+
+    // BPM, eg. 100
+    pub bpm: f64,
+
+    // Speed, eg. 1
+    pub speed: f64,
+
+    // If the song really needs Voices.
+    #[serde(rename = "needsVoices")]
+    pub needs_voices: bool,
+
+    // Equivalent to player. eg. "bf"
+    pub player1: &'a str,
+
+    // Equivalent to opponent. eg. "dad"
+    pub player2: &'a str,
+
+    // Equivalent of gf. eg. "gf"
+    #[serde(rename = "gfVersion")]
+    pub gf_version: &'a str,
+
+    // Song creator data. Not really needed for most engines. eg. "Jordan Santiago"
+    #[serde(rename = "songCreator", skip_serializing_if = "str::is_empty")]
+    pub song_creator: &'a str,
+
+    // Stage data. eg. "stage"
+    pub stage: &'a str,
+
+    #[serde(rename = "validScore")]
+    pub valid_score: bool,
 }
 
 #[derive(Serialize)]
