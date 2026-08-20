@@ -6,6 +6,7 @@
 use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
+use memmap2::Mmap;
 
 use super::flp::{inspect_bytes, is_fsc, parse_fsc};
 use super::types::{DifficultySlots, FlpInfo};
@@ -16,7 +17,11 @@ use super::types::{DifficultySlots, FlpInfo};
 /// count from — the note count comes from actually reading the records.
 /// BPM is always None for FSC (no tempo event; must come from the preset).
 pub fn inspect(input: &Path) -> Result<FlpInfo> {
-    let bytes = fs::read(input).with_context(|| format!("reading {}", input.display()))?;
+    let file = fs::File::open(input)
+        .with_context(|| format!("opening {}", input.display()))?;
+    // SAFETY: read-only map of a file we just opened; not modified during inspection.
+    let bytes: Mmap = unsafe { Mmap::map(&file) }
+        .with_context(|| format!("mapping {}", input.display()))?;
     if is_fsc(&bytes) {
         // parse_fsc gives us a synthetic FlpInfo with one "Score" pattern.
         let project = parse_fsc(&bytes, &mut |_| {})?;
@@ -50,7 +55,7 @@ pub fn find_difficulty_patterns(info: &FlpInfo) -> DifficultySlots {
     slots
 }
 
-/// Scans all FLPs/FSCs in `inputs` and returns the total BPM change
+/// Scans all FLPs/FSCs in `inputs` and returns the total pitch-56 marker
 /// count for `pattern_id` summed across every file. FSC files always
 /// contribute 0 (they have no marker system).
 pub fn scan_merge_inputs(inputs: &[std::path::PathBuf], pattern_id: u16) -> Result<usize> {

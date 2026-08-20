@@ -15,6 +15,8 @@ use std::{
     time::Instant,
 };
 
+use memmap2::Mmap;
+
 use anyhow::{bail, Context, Result};
 use num_format::{Locale, ToFormattedString};
 use rayon::prelude::*;
@@ -29,6 +31,28 @@ use super::{
     inspect::{find_difficulty_patterns, inspect},
     types::{ConversionMode, ConversionPreset, Progress, Stats, PROGRESS_BATCH},
 };
+
+// ---------------------------------------------------------------------------
+// Memory-mapped file helper
+// ---------------------------------------------------------------------------
+
+/// Opens `path` and memory-maps it for reading. The OS pages in only the
+/// bytes actually accessed, so the full file never has to live in RAM.
+///
+/// # Safety
+/// The mmap is read-only. The only risk is another process truncating or
+/// replacing the file while we hold the map, which would be UB. For FLP/FSC
+/// inputs that's not a realistic concern, so the unsafe block is acceptable.
+fn mmap_file(path: &Path) -> anyhow::Result<Mmap> {
+    let file = fs::File::open(path)
+        .with_context(|| format!("opening {}", path.display()))?;
+    // SAFETY: We hold a read-only view of a file we just opened. No other
+    // code in this process writes to FLP/FSC input files, and they are not
+    // expected to be modified by external processes during conversion.
+    let map = unsafe { Mmap::map(&file) }
+        .with_context(|| format!("mapping {}", path.display()))?;
+    Ok(map)
+}
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -60,8 +84,7 @@ pub fn convert_file(
         // -----------------------------------------------------------------
         ConversionMode::Single => {
             progress(Progress::Stage("Reading FLP"));
-            let bytes = fs::read(primary_input)
-                .with_context(|| format!("reading {}", primary_input.display()))?;
+            let bytes = mmap_file(primary_input)?;
             progress(Progress::Stage("Parsing notes"));
             let project = if is_fsc(&bytes) {
                 parse_fsc(&bytes, &mut progress)?
@@ -114,8 +137,7 @@ pub fn convert_file(
 
             for (i, path) in all_inputs.iter().enumerate() {
                 progress(Progress::Stage("Reading FLP"));
-                let bytes = fs::read(path)
-                    .with_context(|| format!("reading {}", path.display()))?;
+                let bytes = mmap_file(path)?;
                 progress(Progress::Stage("Parsing notes"));
 
                 if i == 0 {
@@ -195,8 +217,7 @@ pub fn convert_file(
         // -----------------------------------------------------------------
         ConversionMode::SplitDifficulties => {
             progress(Progress::Stage("Reading FLP"));
-            let bytes = fs::read(primary_input)
-                .with_context(|| format!("reading {}", primary_input.display()))?;
+            let bytes = mmap_file(primary_input)?;
             let info = inspect(primary_input)?;
             let slots = find_difficulty_patterns(&info);
             if !slots.any() {
@@ -275,8 +296,7 @@ pub fn convert_file(
 
             for path in &all_inputs {
                 progress(Progress::Stage("Reading FLP"));
-                let bytes = fs::read(path)
-                    .with_context(|| format!("reading {}", path.display()))?;
+                let bytes = mmap_file(path)?;
                 progress(Progress::Stage("Parsing notes"));
                 let project = if is_fsc(&bytes) {
                     parse_fsc(&bytes, &mut progress)?

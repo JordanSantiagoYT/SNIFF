@@ -15,6 +15,7 @@ serde_json = { version = "1.0", features = ["raw_value"] }
 dirs = "5"
 simd-json = { version = "0.14", features = ["serde_impl"] }
 clap = { version = "4", features = ["derive"] }
+memmap2 = "0.9"
 
 [profile.release]
 lto = "fat"

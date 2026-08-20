@@ -626,19 +626,25 @@ impl eframe::App for App {
                             if paths.is_empty() {
                                 ui.label("No inputs selected.");
                             } else {
-                                for (i, path) in paths.iter().enumerate() {
-                                    ui.horizontal(|ui| {
-                                        if ui.add_enabled(!self.converting, egui::Button::new("-").min_size(egui::vec2(20.0, 0.0))).clicked() {
-                                            to_remove = Some(i);
+                                // Cap the visible list at ~8 rows; scrollable if more are added.
+                                egui::ScrollArea::vertical()
+                                    .id_salt("input_list_scroll")
+                                    .max_height(ui.text_style_height(&egui::TextStyle::Body) * 8.5)
+                                    .show(ui, |ui| {
+                                        for (i, path) in paths.iter().enumerate() {
+                                            ui.horizontal(|ui| {
+                                                if ui.add_enabled(!self.converting, egui::Button::new("-").min_size(egui::vec2(20.0, 0.0))).clicked() {
+                                                    to_remove = Some(i);
+                                                }
+                                                let label = if i == 0 {
+                                                    format!("[1 - primary] {}", path.display())
+                                                } else {
+                                                    format!("[{}] {}", i + 1, path.display())
+                                                };
+                                                ui.monospace(label);
+                                            });
                                         }
-                                        let label = if i == 0 {
-                                            format!("[1 - primary] {}", path.display())
-                                        } else {
-                                            format!("[{}] {}", i + 1, path.display())
-                                        };
-                                        ui.monospace(label);
                                     });
-                                }
                             }
                             if let Some(i) = to_remove {
                                 self.remove_input(i);
