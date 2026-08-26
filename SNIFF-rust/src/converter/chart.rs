@@ -300,7 +300,7 @@ pub(crate) struct SongData<'a, 'p> {
     pub player2: &'a str,
     #[serde(rename = "gfVersion")]
     pub gf_version: &'a str,
-    #[serde(rename = "songCreator", skip_serializing_if = "str::is_empty")]
+    #[serde(rename = "songCredit", skip_serializing_if = "str::is_empty")]
     pub song_creator: &'a str,
     pub stage: &'a str,
     #[serde(rename = "validScore")]
