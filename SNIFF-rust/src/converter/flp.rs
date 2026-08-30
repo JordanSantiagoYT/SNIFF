@@ -122,6 +122,28 @@ impl<'a> EventReader<'a> {
         let event = match id {
             0..=63   => FlEvent::Byte(id, take(self.bytes, &mut self.at, 1)?[0]),
             64..=127  => FlEvent::Word(id, take_u16(self.bytes, &mut self.at)?),
+
+            // FL Studio 25 introduced event 0xAC (172) with a non-standard layout
+            // that doesn't fit the dword (128-191) framing it would otherwise imply.
+            // Actual layout (confirmed by binary inspection):
+            //   u32  — 4-byte unknown field (flags or subtype)
+            //   u8   — byte length of the following UTF-16LE string
+            //   [u8] — UTF-16LE string of that many bytes (e.g. "FL Studio 25.2.3.5171.5171")
+            //
+            // Without this special case the parser reads only 4 bytes (the dword),
+            // then misinterprets the remaining payload as subsequent event IDs, causing
+            // every downstream event (including EVENT_FINE_TEMPO / BPM) to be missed.
+            // We emit the whole payload as Data so the `_ => {}` arms ignore it cleanly.
+            0xAC => {
+                // skip 4-byte unknown field, then read 1-byte string length
+                take(self.bytes, &mut self.at, 4)
+                    .context("0xAC event: truncated u32 field")?;
+                let strlen = take(self.bytes, &mut self.at, 1)
+                    .context("0xAC event: truncated strlen byte")?[0] as usize;
+                FlEvent::Data(id, take(self.bytes, &mut self.at, strlen)
+                    .context("0xAC event: truncated UTF-16 string payload")?)
+            }
+
             128..=191 => FlEvent::Dword(id, take_u32(self.bytes, &mut self.at)?),
             _ => {
                 let len = take_varint(self.bytes, &mut self.at)?;
@@ -423,17 +445,26 @@ pub fn inspect_bytes(bytes: &[u8]) -> Result<FlpInfo> {
 
 /// Returns true if `bytes` looks like an FL Studio Score file rather than
 /// a full FLP project. Both share the `FLhd` magic and 6-byte header, but
-/// an FSC has a non-zero format field (offset 8, u16 LE) whereas an FLP
-/// always has format = 0. We use this to transparently route `.fsc` inputs
+/// an FSC has a specific non-zero format field (offset 8, u16 LE) whereas
+/// an FLP has format = 0. We use this to transparently route `.fsc` inputs
 /// without requiring a separate file-extension check in every call site.
+///
+/// We match only the known FSC value (0x0010) rather than treating any
+/// non-zero value as FSC. FL Studio 25 changed the FLP format field to a
+/// new non-zero value, so `format != 0` would incorrectly route FL 25 FLPs
+/// into the FSC path — producing the misleading "FSC has no tempo event"
+/// error. Matching exactly 0x0010 keeps FSC detection precise and lets
+/// unrecognised format values fall through to `parse_flp`, where the version
+/// check in `open_flp` will emit a clear error if the file is unsupported.
 pub fn is_fsc(bytes: &[u8]) -> bool {
     // Bytes 0-3: "FLhd", 4-7: header size (6), 8-9: format field.
-    // FLP = 0x0000, FSC = anything else (observed 0x0010 in the wild).
+    // FSC format field is always 0x0010 (observed in all FL Studio versions).
+    // FLP format field is 0x0000 (pre-FL25) or a different non-zero value (FL25+).
     if bytes.len() < 10 {
         return false;
     }
     let format = u16::from_le_bytes([bytes[8], bytes[9]]);
-    format != 0
+    format == 0x0010
 }
 
 /// Parses an FL Studio Score file (.fsc) from an already-read byte slice.
