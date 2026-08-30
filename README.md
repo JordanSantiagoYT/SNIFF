@@ -34,14 +34,14 @@ In the Rust port, more optimizations/differences are included to make it faster 
 * Supports command-line arguments, functioning just like the GUI version. (though, using the GUI is more recommended)
 
 NOTES:
-- Only FL Studio 20 and 21 are supported! Saving using FL 2025 (or later) might break things (unless using FSCs).
+- Only FL Studio 20 and 21 are supported (on the C# version)! Saving using FL 2025 (or later) might break things (unless using FSCs).
 - If SNIFF is missing notes but they're there in the FLP, ensure that your notes are in the right places and your channel is:
 - - the top channel in the rack
   - preferably an instance of FPC. if not, make sure there are no FPC channels
   - not using any grouped notes
   - selected when saving the project
   - set up in the first pattern, and that pattern is selected while saving.
-  - if after all of these it doesn't work, your FL version might be too new for this program. sadly, the original person that made this stopped working on it, so FL25+ FLPs are not supported.
+  - if after all of these it doesn't work, your FL version might be too new for this program. sadly, the original person that made this stopped working on it, so FL25+ FLPs are not supported (OUTDATED: they work on the Rust port!).
   - If using the Rust port, make sure there are any actual notes in the pattern.
   - there's also [HaxePixel's Rust port of SNIFF,](https://github.com/HaxePixel/SNIFF-RUSTED) however the JSON to FLP direction doesn't convert charts into readable FLP files (aside from.. HaxePixel's SNIFF.)
 
