@@ -114,7 +114,7 @@ pub(crate) struct ChartNote {
     /// isn't known until `resolve_must_hit_sections` runs).
     pub direction: u8,
     pub player: bool,
-    /// Portamento flag (record[19] & 0x08). Used as a per-note Alt Animation
+    /// Portamento flag (record[19] & 0x10). Used as a per-note Alt Animation
     /// marker independent of the section-level `alt` flag.
     pub portamento: bool,
     /// True when velocity < 64 (below 50%). Forces a sustain tail regardless
@@ -254,7 +254,7 @@ pub(crate) fn build_note_json(
     // the section-level `alt` (set by alt_marker_pitch) but scoped to this
     // single note. Either source triggers the type string. Opponent notes
     // never receive Alt Animation.
-    let note_type: &'static str = if (alt || note.portamento) && note.player {
+    let note_type: &'static str = if (alt && note.player) || note.portamento {
         "Alt Animation"
     } else {
         ""

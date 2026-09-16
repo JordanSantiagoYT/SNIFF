@@ -86,9 +86,16 @@ fn main() -> eframe::Result<()> {
         // run_cli() exits on error; if we reach here it succeeded.
         std::process::exit(0);
     }
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1080.0, 900.0]),
+        ..Default::default()
+    };
+
     eframe::run_native(
         "SNIFF",
-        eframe::NativeOptions::default(),
+        options,
         Box::new(|_| Ok(Box::<App>::default())),
     )
 }
@@ -626,10 +633,10 @@ impl eframe::App for App {
                             if paths.is_empty() {
                                 ui.label("No inputs selected.");
                             } else {
-                                // Cap the visible list at ~8 rows; scrollable if more are added.
+                                // Cap the visible list at ~7 rows; scrollable if more are added.
                                 egui::ScrollArea::vertical()
                                     .id_salt("input_list_scroll")
-                                    .max_height(ui.text_style_height(&egui::TextStyle::Body) * 8.5)
+                                    .max_height(ui.text_style_height(&egui::TextStyle::Body) * 7.5)
                                     .show(ui, |ui| {
                                         for (i, path) in paths.iter().enumerate() {
                                             ui.horizontal(|ui| {
@@ -842,15 +849,22 @@ impl eframe::App for App {
                         }
                         ui.label("One entry per BPM change, in timeline order. Each value replaces the current base BPM from that section onward (BPM multiplier is applied on top).");
                         let mut to_remove: Option<usize> = None;
-                        for (i, bpm) in self.preset.bpm_changes.iter_mut().enumerate() {
-                            ui.horizontal(|ui| {
-                                ui.label(format!("Change {}:", i + 1));
-                                ui.add(egui::DragValue::new(bpm).speed(0.5).range(1.0..=f64::INFINITY));
-                                if ui.small_button("X").clicked() {
-                                    to_remove = Some(i);
+
+                        egui::ScrollArea::vertical()
+                            .id_salt("bpm_changes_scroll")
+                            .max_height(ui.text_style_height(&egui::TextStyle::Body) * 7.5)
+                            .show(ui, |ui| {
+                                for (i, bpm) in self.preset.bpm_changes.iter_mut().enumerate() {
+                                    ui.horizontal(|ui| {
+                                        ui.label(format!("Change {}:", i + 1));
+                                        ui.add(egui::DragValue::new(bpm).speed(0.5).range(1.0..=f64::INFINITY));
+                                        if ui.small_button("X").clicked() {
+                                            to_remove = Some(i);
+                                        }
+                                    });
                                 }
                             });
-                        }
+
                         if let Some(i) = to_remove {
                             self.preset.bpm_changes.remove(i);
                         }

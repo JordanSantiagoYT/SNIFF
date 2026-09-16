@@ -66,7 +66,7 @@ pub(crate) struct FlNote {
     /// Raw velocity (0–127, FL Studio default 100). Values below 64 (< 50%)
     /// are treated as forced sustains in the chart builder.
     pub velocity: u8,
-    /// True when flags byte (record[19]) has bit 0x08 set — the piano-roll
+    /// True when flags byte (record[19]) has bit 0x10 set — the piano-roll
     /// "portamento" toggle, repurposed by SNIFF as a per-note Alt Animation flag.
     pub portamento: bool,
 }
@@ -308,7 +308,7 @@ pub(crate) fn parse_notes(
         // 12–15: Pitch (uint) — low byte is the MIDI key; upper bytes unused here
         // 16–17: FinePitch (ushort)
         // 18:    Release (byte)
-        // 19:    Flags (byte) — bit 0x08 = portamento
+        // 19:    Flags (byte) — bit 0x10 = portamento
         // 20:    Panning (byte)
         // 21:    Velocity (byte, 0–127, default 100)
         // 22:    ModX (byte)
@@ -317,7 +317,7 @@ pub(crate) fn parse_notes(
             position:  u32::from_le_bytes(record[0..4].try_into().unwrap()),
             length:    u32::from_le_bytes(record[8..12].try_into().unwrap()),
             key:       record[12],
-            portamento: record[19] & 0x08 != 0,
+            portamento: record[19] & 0x10 != 0,
             velocity:  record[21],
         });
         // Emit progress in batches (see PROGRESS_BATCH in types.rs) so the
