@@ -55,7 +55,8 @@ pub(crate) const PITCH_MUST_HIT_FALSE: u8 = 54;
 // ---------------------------------------------------------------------------
 
 /// A single piano-roll note exactly as it appears in the FLP binary.
-/// Field names and offsets cross-referenced against PyFLP's _NoteStruct.
+/// Field names and offsets verified against the original SNIFF's FLNote
+/// struct in FL.cs.
 #[derive(Clone, Copy)]
 pub(crate) struct FlNote {
     pub position: u32,
