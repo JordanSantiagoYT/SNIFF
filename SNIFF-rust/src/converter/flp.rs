@@ -55,15 +55,14 @@ pub(crate) const PITCH_MUST_HIT_FALSE: u8 = 54;
 // ---------------------------------------------------------------------------
 
 /// A single piano-roll note exactly as it appears in the FLP binary.
-/// Field names and offsets verified against the original SNIFF's FLNote
-/// struct in FL.cs.
+/// Field names and offsets cross-referenced against PyFLP's _NoteStruct.
 #[derive(Clone, Copy)]
 pub(crate) struct FlNote {
     pub position: u32,
     pub length: u32,
     /// MIDI pitch (low byte of the FLP pitch uint at offset 12).
     pub key: u8,
-    /// Raw velocity (0–127, FL Studio default 100). Values below 64 (< 50%)
+    /// Raw velocity (0–128, FL Studio default 100). Values below 64 (< 50%)
     /// are treated as forced sustains in the chart builder.
     pub velocity: u8,
     /// True when flags byte (record[19]) has bit 0x10 set — the piano-roll
@@ -468,25 +467,34 @@ pub fn is_fsc(bytes: &[u8]) -> bool {
 }
 
 /// Parses an FL Studio Score file (.fsc) from an already-read byte slice.
-/// An FSC has the same FLhd/FLdt framing as an FLP, but FLdt's payload is
-/// raw packed 24-byte note records with no event-type wrapping — no pattern
-/// events, no tempo event. PPQ is read from the header. BPM must come from
-/// the caller (i.e. `base_bpm_override` in the preset).
+/// An FSC shares the FLhd/FLdt framing of an FLP but carries one anonymous
+/// pattern's notes and no tempo event. PPQ is read from the header; BPM must
+/// come from the caller (i.e. `base_bpm_override` in the preset).
 pub(crate) fn parse_fsc(
     bytes: &[u8],
     progress: &mut dyn FnMut(Progress),
 ) -> Result<Project> {
-    // open_flp reads FLhd and positions the EventReader at the start of FLdt.
-    // We don't run the event loop — instead we grab the raw FLdt bytes and
-    // feed them straight to parse_notes, bypassing the event framing entirely.
-    let (ppq, reader) = open_flp(bytes)?;
-
-    // The EventReader's `at` field points to the first byte of FLdt payload
-    // and `end` points one past the last. Extract the raw slice directly.
-    let payload = &reader.bytes[reader.at..reader.end];
+    let (ppq, mut events) = open_flp(bytes)?;
+    let raw_payload = &bytes[events.at..events.end];
 
     let mut notes = Vec::new();
-    parse_notes(payload, &mut notes, progress)?;
+    let mut saw_notes_event = false;
+    let framed = (|| -> Result<()> {
+        while let Some(event) = events.next()? {
+            if let FlEvent::Data(EVENT_PATTERN_NOTES, payload) = event {
+                saw_notes_event = true;
+                parse_notes(payload, &mut notes, progress)?;
+            }
+        }
+        Ok(())
+    })();
+
+    // Older SNIFF exports and some score files carry bare packed records with
+    // no event framing, so fall back to reading the whole payload as records.
+    if framed.is_err() || !saw_notes_event {
+        notes.clear();
+        parse_notes(raw_payload, &mut notes, progress)?;
+    }
 
     // FSC has no pattern list and no tempo event — return a synthetic Project
     // with a single unnamed pattern so the rest of the pipeline can treat it

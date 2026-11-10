@@ -78,6 +78,46 @@ fn save_config(state: &PersistedState) {
     }
 }
 
+const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+/// FL Studio numbering: MIDI 60 is C5.
+fn pitch_name(pitch: u8) -> String {
+    format!("{}{}", NOTE_NAMES[(pitch % 12) as usize], pitch / 12)
+}
+
+fn parse_pitch(text: &str) -> Option<f64> {
+    let text = text.trim();
+    if let Ok(number) = text.parse::<f64>() {
+        return Some(number);
+    }
+    let mut chars = text.chars();
+    let base: i32 = match chars.next()?.to_ascii_uppercase() {
+        'C' => 0,
+        'D' => 2,
+        'E' => 4,
+        'F' => 5,
+        'G' => 7,
+        'A' => 9,
+        'B' => 11,
+        _ => return None,
+    };
+    let rest = chars.as_str();
+    let (accidental, octave_text) = match rest.chars().next() {
+        Some('#') => (1, &rest[1..]),
+        Some('b') => (-1, &rest[1..]),
+        _ => (0, rest),
+    };
+    let octave: i32 = octave_text.parse().ok()?;
+    Some((octave * 12 + base + accidental) as f64)
+}
+
+fn pitch_drag(value: &mut u8) -> egui::DragValue<'_> {
+    egui::DragValue::new(value)
+        .range(0..=127)
+        .custom_formatter(|number, _| pitch_name(number as u8))
+        .custom_parser(parse_pitch)
+}
+
 fn main() -> eframe::Result<()> {
     // If any arguments were passed, run headlessly in CLI mode and exit.
     // The GUI launches only when the binary is invoked with no arguments.
@@ -86,16 +126,13 @@ fn main() -> eframe::Result<()> {
         // run_cli() exits on error; if we reach here it succeeded.
         std::process::exit(0);
     }
-
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1080.0, 900.0]),
-        ..Default::default()
-    };
-
     eframe::run_native(
         "SNIFF",
-        options,
+        eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([900.0, 700.0]),
+            ..Default::default()
+        },
         Box::new(|_| Ok(Box::<App>::default())),
     )
 }
@@ -573,7 +610,7 @@ impl eframe::App for App {
 
             match self.direction {
                 Direction::ToChart => {
-                    ui.label("Reads piano-roll notes directly from the FLP/FSC. Fixed markers: 53/54 toggle mustHitSection, 56 = BPM change, 57 = altAnim. Configurable alt-note marker below.");
+                    ui.label("Reads piano-roll notes directly from the FLP/FSC. Fixed markers: F4/F#4 toggle mustHitSection, G#4 = BPM change, A4 = altAnim. Configurable alt-note marker below.");
                     ui.separator();
 
                     // --- Pipeline mode selector ---
@@ -746,8 +783,8 @@ impl eframe::App for App {
                     });
 
                     ui.horizontal(|ui| {
-                        ui.label("Pitch 58 marker");
-                        ui.add(egui::DragValue::new(&mut self.preset.alt_marker_pitch).range(0..=127));
+                        ui.label("Alt note marker");
+                        ui.add(pitch_drag(&mut self.preset.alt_marker_pitch));
                         if !matches!(self.inputs, PipelineInputs::SplitDifficulties(_)) {
                             ui.label("Pattern");
                             if self.patterns.is_empty() {
@@ -809,10 +846,10 @@ impl eframe::App for App {
                     });
 
                     ui.collapsing("Pitch mapping (JSON preset controls this precisely)", |ui| {
-                        ui.label("SNIFF default: 48-51 = BF left/down/up/right; 60-63 = opponent left/down/up/right.");
+                        ui.label("SNIFF default: C4-D#4 = BF left/down/up/right; C5-D#5 = opponent left/down/up/right.");
                         for mapping in &mut self.preset.mapping {
                             ui.horizontal(|ui| {
-                                ui.label("Pitch"); ui.add(egui::DragValue::new(&mut mapping.pitch).range(0..=127));
+                                ui.label("Key"); ui.add(pitch_drag(&mut mapping.pitch));
                                 ui.selectable_value(&mut mapping.side, converter::Side::Player, "BF");
                                 ui.selectable_value(&mut mapping.side, converter::Side::Opponent, "Opponent");
                                 ui.label("Direction"); ui.add(egui::DragValue::new(&mut mapping.direction).range(0..=3));
@@ -820,7 +857,7 @@ impl eframe::App for App {
                         }
                     });
 
-                    ui.collapsing("BPM changes (pitch 56 markers)", |ui| {
+                    ui.collapsing("BPM changes (G#4 markers)", |ui| {
                         let detected_count = match &self.inputs {
                             PipelineInputs::Merge(_) => self.merge_scan_total.or_else(|| {
                                 self.patterns
@@ -849,7 +886,6 @@ impl eframe::App for App {
                         }
                         ui.label("One entry per BPM change, in timeline order. Each value replaces the current base BPM from that section onward (BPM multiplier is applied on top).");
                         let mut to_remove: Option<usize> = None;
-
                         egui::ScrollArea::vertical()
                             .id_salt("bpm_changes_scroll")
                             .max_height(ui.text_style_height(&egui::TextStyle::Body) * 7.5)
@@ -864,7 +900,6 @@ impl eframe::App for App {
                                     });
                                 }
                             });
-
                         if let Some(i) = to_remove {
                             self.preset.bpm_changes.remove(i);
                         }
@@ -873,7 +908,7 @@ impl eframe::App for App {
                             self.preset.bpm_changes.push(default);
                         }
                         if self.preset.bpm_changes.is_empty() {
-                            ui.label("(no BPM changes -- leave empty if the chart has no pitch-56 markers)");
+                            ui.label("(no BPM changes -- leave empty if the chart has no G#4 markers)");
                         }
                     });
 
@@ -918,7 +953,7 @@ impl eframe::App for App {
                 } // end Direction::ToChart
 
                 Direction::ToScore => {
-                    ui.label("Converts a Psych Engine chart JSON back to an FL Studio Score (.fsc). BPM is read from the JSON. Output PPQ is always 96. Uses SNIFF's default pitch layout (48-51 = BF, 60-63 = opponent).");
+                    ui.label("Converts a Psych Engine chart JSON back to an FL Studio Score (.fsc). BPM is read from the JSON. Output PPQ is always 96. Uses SNIFF's default key layout (C4-D#4 = BF, C5-D#5 = opponent).");
                     ui.separator();
 
                     ui.horizontal(|ui| {
